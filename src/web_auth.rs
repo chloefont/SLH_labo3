@@ -16,6 +16,8 @@ use serde_json::json;
 use std::error::Error;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
+use serde_json::Value::String;
+use crate::utils::*;
 
 /// Declares the different endpoints
 /// state is used to pass common structs to the endpoints
@@ -63,41 +65,12 @@ async fn register(
     let _email = register.register_email;
     let _password = register.register_password;
 
-    println!("{}", _email);
-    println!("{}", _password);
-
-    let splited_email = _email.split('@').collect::<Vec<&str>>();
-
-    if splited_email.len() < 2 {
-        return Err(AuthResult::WrongCreds.into_response())
+    let _body = "Please clink on the following link...".to_string();
+    match send_mail(_email, "Email validation".to_string(), _body) {
+        Result::Ok(_) => println!("Mail sent"),
+        Result::Err(_) => return Err(AuthResult::WrongCreds.into_response())
     }
 
-    let host = env::var("SMTP_HOST").expect("Could not get SMTP_HOST from ENV");
-    let port = env::var("SMTP_PORT").expect("Could not get SMTP_PORT from ENV").parse::<u16>();
-    match port {
-        Result::Ok(_) => (),
-        Result::Err(e) => panic!("SMTP_PORT in ENV should be a u16")
-    }
-    let username = env::var("SMTP_USERNAME").expect("Could not get SMTP_USERNAME from ENV");
-    let password = env::var("SMTP_PASSWORD").expect("Could not get SMTP_PASSWORD from ENV");
-
-    let email = Message::builder()
-        .from("labo3 <labo3@gmail.com>".parse().unwrap())
-        .to(format!("{} <{}>", splited_email[0], _email).parse().unwrap())
-        .subject("Email verification")
-        .body(String::from("Hello, world!")).unwrap();
-
-    let creds = Credentials::new(username, password);
-
-    let mailer = SmtpTransport::builder_dangerous(host)
-        .credentials(creds)
-        .port(port.unwrap())
-        .build();
-
-    match mailer.send(&email) {
-        Ok(_) => (),
-        Err(e) => return Err(AuthResult::WrongCreds.into_response())
-    }
 
     // Once the user has been created, send a verification link by email
     // If you need to store data between requests, you may use the session_store. You need to first
