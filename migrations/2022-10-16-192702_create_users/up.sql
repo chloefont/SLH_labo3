@@ -1,0 +1,6 @@
+CREATE TABLE users (
+   email VARCHAR NOT NULL PRIMARY KEY,
+   auth_method VARCHAR NOT NULL,
+   password VARCHAR NOT NULL,
+   email_verified BOOLEAN NOT NULL DEFAULT FALSE
+)

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="" />
+    <meta name="author" content="" />
+    <title>SLH - Lab2</title>
+    <!-- Favicon-->
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+    <!-- Bootstrap icons-->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css" rel="stylesheet" type="text/css" />
+    <!-- Google fonts-->
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700,300italic,400italic,700italic" rel="stylesheet" type="text/css" />
+    <!-- MDB -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/5.0.0/mdb.min.css" rel="stylesheet"/>
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+</head>
+<body class="d-flex flex-column min-vh-100">
+<!-- Navigation-->
+<nav class="navbar navbar-light bg-light static-top">
+    <div class="container">
+        <a class="navbar-brand" href="/home">SLH - Lab2</a>
+        {{#if email}}
+            <span class="nav-item ms-auto me-4" id="welcome_back_logout">
+                <a href="/logout">
+                    <span class="welcome_back">Welcome back {{email}}</span>
+                    <span class="logout">Logout</span>
+                </a>
+            </span>
+        {{/if}}
+        {{#unless email}}
+            <a class="btn btn-primary bg-dark" href="#">Login</a>
+        {{/unless}}
+
+    </div>
+</nav>
+
+<!-- Page content-->
+<div class="container">
+    <div class="mt-5 w-50 m-auto">
+        <!-- Pills navs -->
+        <ul class="nav nav-pills nav-justified mb-3" id="ex1" role="tablist">
+            <li class="nav-item" role="presentation">
+                <a class="nav-link active" id="tab-login" data-mdb-toggle="pill" href="#pills-login" role="tab"
+                   aria-controls="pills-login" aria-selected="true">Login</a>
+            </li>
+            <li class="nav-item" role="presentation">
+                <a class="nav-link" id="tab-register" data-mdb-toggle="pill" href="#pills-register" role="tab"
+                   aria-controls="pills-register" aria-selected="false">Register</a>
+            </li>
+        </ul>
+        <!-- Pills navs -->
+
+        <!-- Pills content -->
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="pills-login" role="tabpanel" aria-labelledby="tab-login">
+                <form id="login_form">
+                    <!-- Email input -->
+                    <div class="form-outline mb-4">
+                        <input type="email" id="login_email" name="login_email" class="form-control" />
+                        <label class="form-label" for="login_email">Email</label>
+                    </div>
+
+                    <!-- Password input -->
+                    <div class="form-outline mb-4">
+                        <input type="password" id="login_password" name="login_password" class="form-control" />
+                        <label class="form-label" for="login_password">Password</label>
+                    </div>
+
+                    <!-- Submit button -->
+                    <button type="submit" id="btn_login" class="btn btn-primary btn-block mb-4">Sign in</button>
+                </form>
+            </div>
+            <div class="tab-pane fade" id="pills-register" role="tabpanel" aria-labelledby="tab-register">
+                <form id="register_form">
+                    <!-- Email input -->
+                    <div class="form-outline mb-4">
+                        <input type="email" id="register_email" name="register_email" class="form-control" />
+                        <label class="form-label" for="register_email">Email</label>
+                    </div>
+
+                    <!-- Password input -->
+                    <div class="form-outline mb-4">
+                        <input type="password" id="register_password" name="register_password" class="form-control" />
+                        <label class="form-label" for="register_password">Password</label>
+                    </div>
+
+                    <!-- Repeat Password input -->
+                    <div class="form-outline mb-4">
+                        <input type="password" id="register_password2" name="register_password2" class="form-control" />
+                        <label class="form-label" for="register_password2">Repeat password</label>
+                    </div>
+
+                    <!-- Submit button -->
+                    <button type="submit" id="btn_register" class="btn btn-primary btn-block mb-3">Register</button>
+                </form>
+            </div>
+            <!-- Register buttons -->
+            <div class="text-center">
+                <p>or sign up with:</p>
+                <a href="/oauth/google">
+                    <button type="button" class="btn btn-link btn-floating mx-1">
+                        <i class="fab fa-google"></i>
+                    </button>
+                </a>
+            </div>
+        </div>
+        <!-- Pills content -->
+        <small id="register_success" class="text-success"></small>
+        <small id="register_error" class="text-warning"></small>
+        <small id="login_error" class="text-warning"></small>
+    </div>
+</div>
+<!-- Footer-->
+<footer class="footer bg-dark mt-auto">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-6 h-100 text-center text-lg-start my-auto">
+                <p class="text-muted small mb-4 mb-lg-0">Demonstration website built with MDM, Bootstrap, Font Awesome.</p>
+            </div>
+            <div class="col-lg-6 h-100 text-center text-lg-end my-auto">
+                <ul class="list-inline mb-0">
+                </ul>
+            </div>
+        </div>
+    </div>
+</footer>
+<!-- Bootstrap core JS-->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- MDB -->
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/5.0.0/mdb.min.js"></script>
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.1.min.js" integrity="sha256-o88AwQnZB+VDvE9tvIXrMQaPlFFSUTR+nldQm1LuPXQ=" crossorigin="anonymous"></script>
+<script>
+    $.postJSON = function(url, data, callback, err) {
+        return jQuery.ajax({
+            'type': 'POST',
+            'url': url,
+            'contentType': 'application/json',
+            'data': JSON.stringify(data),
+            'dataType': 'json',
+            'success': callback,
+            "error": err
+        });
+    };
+
+    $(function() {
+        function clear_msg() {
+            $('#register_success').text('');
+            $('#register_error').text('');
+            $('#login_error').text('');
+        }
+
+        $('#pills-login').on('show.mdb.tab', function (e) {
+            clear_msg();
+        });
+
+        $('#pills-register').on('show.mdb.tab', function (e) {
+            clear_msg();
+        });
+
+        $('#login_form').submit(function(e) {
+            e.preventDefault();
+            clear_msg();
+
+            const data = {
+                login_email: $('#login_email').val(),
+                login_password: $('#login_password').val(),
+            };
+            $.postJSON('/login', data, function(data) {
+                $('#login_error').text();
+                window.location.replace("/home");
+            }, function(xhr, err) {
+                $('#login_error').text(xhr.responseJSON.res);
+            });
+        });
+
+        $('#register_form').submit(function(e) {
+            e.preventDefault();
+
+            $('#register_success').text('');
+            $('#register_error').text('');
+            $('#login_error').text('');
+
+            const data = {
+                register_email: $('#register_email').val(),
+                register_password: $('#register_password').val(),
+                register_password2: $('#register_password2').val(),
+            };
+            $.postJSON('/register', data, function(data) {
+                $('#register_success').text("Click the link sent by email to create your account.");
+            }, function(xhr, err) {
+                $('#register_error').text(xhr.responseJSON.res);
+            });
+        });
+
+    });
+</script>
+</body>
+</html>
