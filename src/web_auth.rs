@@ -1,5 +1,5 @@
 use std::env;
-use crate::db::DbConn;
+use crate::db::{DbConn, save_user, user_exists};
 use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
@@ -60,7 +60,7 @@ async fn login(
 /// POST /register
 /// BODY { "register_email": "email", "register_password": "password", "register_password2": "password" }
 async fn register(
-    _conn: DbConn,
+    mut _conn: DbConn,
     State(_session_store): State<MemoryStore>,
     Json(register): Json<RegisterRequest>,
 ) -> Result<AuthResult, Response> {
@@ -70,11 +70,19 @@ async fn register(
     let _email = register.register_email;
     let _password = register.register_password;
 
+    match user_exists(&mut _conn, _email.as_str()) {
+        Ok(_) => return Err(AuthResult::UserExists.into_response()),
+        _ => ()
+    }
+
+
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(_password.as_ref(), &salt).expect("Error while hashing password").to_string();
 
-    User::new(_email.as_str(), password_hash.as_str(), Password, false);
+    let user = User::new(_email.as_str(), password_hash.as_str(), Password, false);
+
+    save_user(&mut _conn, user).expect("Error when tried to save user");
 
     let _body = "Please clink on the following link...".to_string();
     send_mail(&_email, "Email validation".to_string(), _body).or(Err(AuthResult::WrongCreds.into_response()))?;
@@ -166,7 +174,8 @@ fn add_auth_cookie(jar: CookieJar, _user: &UserDTO) -> Result<CookieJar, Box<dyn
 enum AuthResult {
     Success,
     WrongCreds,
-    IncorrectEmail
+    IncorrectEmail,
+    UserExists
 }
 
 /// Returns a status code and a JSON payload based on the value of the enum
@@ -175,7 +184,8 @@ impl IntoResponse for AuthResult {
         let (status, message) = match self {
             Self::Success => (StatusCode::OK, "Success"),
             Self::WrongCreds => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
-            Self::IncorrectEmail => (StatusCode::UNAUTHORIZED, "Incorrect email")
+            Self::IncorrectEmail => (StatusCode::UNAUTHORIZED, "Incorrect email"),
+            Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used")
         };
         (status, Json(json!({ "res": message }))).into_response()
     }
