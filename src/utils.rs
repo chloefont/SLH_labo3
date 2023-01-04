@@ -4,7 +4,7 @@ use dotenv::Error;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
 
-pub fn send_mail(email : String, subject : String, body : String) -> Result<(), String> {
+pub fn send_mail(email : &String, subject : String, body : String) -> Result<(), String> {
     let splited_email = email.split('@').collect::<Vec<&str>>();
 
     if splited_email.len() < 2 {

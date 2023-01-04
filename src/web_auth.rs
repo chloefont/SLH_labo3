@@ -3,7 +3,7 @@ use crate::db::DbConn;
 use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
-use crate::user::UserDTO;
+use crate::user::{User, UserDTO};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -14,9 +14,13 @@ use axum_extra::extract::CookieJar;
 use axum_sessions::async_session::MemoryStore;
 use serde_json::json;
 use std::error::Error;
+use argon2::{Argon2, PasswordHasher};
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::SaltString;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
 use serde_json::Value::String;
+use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
 
 /// Declares the different endpoints
@@ -29,6 +33,7 @@ pub fn stage(state: AppState) -> Router {
         .route("/_oauth", get(oauth_redirect))
         .route("/password_update", post(password_update))
         .route("/logout", get(logout))
+        .route("/email-verification/:token", get(email_verification))
         .with_state(state)
 }
 
@@ -65,12 +70,14 @@ async fn register(
     let _email = register.register_email;
     let _password = register.register_password;
 
-    let _body = "Please clink on the following link...".to_string();
-    match send_mail(_email, "Email validation".to_string(), _body) {
-        Result::Ok(_) => println!("Mail sent"),
-        Result::Err(_) => return Err(AuthResult::WrongCreds.into_response())
-    }
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2.hash_password(_password.as_ref(), &salt).expect("Error while hashing password").to_string();
 
+    User::new(_email.as_str(), password_hash.as_str(), Password, false);
+
+    let _body = "Please clink on the following link...".to_string();
+    send_mail(&_email, "Email validation".to_string(), _body).or(Err(AuthResult::WrongCreds.into_response()))?;
 
     // Once the user has been created, send a verification link by email
     // If you need to store data between requests, you may use the session_store. You need to first
@@ -81,6 +88,11 @@ async fn register(
 }
 
 // TODO: Create the endpoint for the email verification function.
+/// Endpoint used to register a new account
+/// GET /email-verification/:token
+async fn email_verification() {
+
+}
 
 /// Endpoint used for the first OAuth step
 /// GET /oauth/google

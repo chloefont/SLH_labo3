@@ -26,3 +26,4 @@ strum_macros = "0.24"
 dotenv = "0.15"
 
 lettre = "0.10"
+argon2 = "0.4.1"
