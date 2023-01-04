@@ -4,22 +4,23 @@ use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
 use crate::user::{User, UserDTO};
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
-use axum_sessions::async_session::MemoryStore;
+use axum_sessions::async_session::{MemoryStore, SessionStore, Session};
 use serde_json::json;
 use std::error::Error;
+use std::fmt::format;
 use argon2::{Argon2, PasswordHasher};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
-use serde_json::Value::String;
+use serde::de::Unexpected::Str;
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
 
@@ -75,7 +76,6 @@ async fn register(
         _ => ()
     }
 
-
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(_password.as_ref(), &salt).expect("Error while hashing password").to_string();
@@ -84,7 +84,20 @@ async fn register(
 
     save_user(&mut _conn, user).expect("Error when tried to save user");
 
-    let _body = "Please clink on the following link...".to_string();
+    let mut session = Session::new();
+    session.insert("email", _email.clone()).or(Err(AuthResult::Error.into_response()))?;
+
+    let session_id = _session_store.store_session(session).await.expect("Error when storing session");
+
+    if session_id == None {
+        return Err(AuthResult::Error.into_response())
+    }
+
+    let mut url = String::from("http://localhost:8000/email-verification/");
+    url_escape::encode_component_to_string(session_id.unwrap(), &mut url);
+
+    let _body = format!("Please click on the following link to validate your email address : {}", url);
+
     send_mail(&_email, "Email validation".to_string(), _body).or(Err(AuthResult::WrongCreds.into_response()))?;
 
     // Once the user has been created, send a verification link by email
@@ -98,8 +111,23 @@ async fn register(
 // TODO: Create the endpoint for the email verification function.
 /// Endpoint used to register a new account
 /// GET /email-verification/:token
-async fn email_verification() {
+async fn email_verification(
+    mut _conn: DbConn,
+    State(_session_store): State<MemoryStore>,
+    Path(session_id_encoded) : Path<String>
+) -> Result<AuthResult, Response> {
+    let session_id = url_escape::decode(session_id_encoded.as_str()).to_string();
+    println!("Email verification {}", session_id);
 
+    let session_option = _session_store.load_session(session_id).await.expect("Error when loading session");
+
+    if session_option == None {
+        return Err(AuthResult::Error.into_response());
+    }
+
+    let session : String = session_option.unwrap().get("email").unwrap();
+
+    Ok(AuthResult::Success)
 }
 
 /// Endpoint used for the first OAuth step
@@ -175,7 +203,8 @@ enum AuthResult {
     Success,
     WrongCreds,
     IncorrectEmail,
-    UserExists
+    UserExists,
+    Error
 }
 
 /// Returns a status code and a JSON payload based on the value of the enum
@@ -185,7 +214,8 @@ impl IntoResponse for AuthResult {
             Self::Success => (StatusCode::OK, "Success"),
             Self::WrongCreds => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
             Self::IncorrectEmail => (StatusCode::UNAUTHORIZED, "Incorrect email"),
-            Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used")
+            Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used"),
+            Self::Error => (StatusCode::UNAUTHORIZED, "Error")
         };
         (status, Json(json!({ "res": message }))).into_response()
     }
