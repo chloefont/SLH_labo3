@@ -217,7 +217,7 @@ fn add_auth_cookie(jar: CookieJar, _user: &UserDTO) -> Result<CookieJar, Box<dyn
     // TODO: You have to create a new signed JWT and store it in the auth cookie.
     //       Careful with the cookie options.
     let secret = env::var("JWT_SECRET").expect("Could not get JWT_SECRET from ENV");
-    let expireds_in = env::var("JWT_EXPIRES_IN_DAYS").expect("Could not get JWT_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("JWT_EXPIRES_IN_DAYS from ENV should be a i64");
+    let expireds_in = env::var("COOKIE_EXPIRES_IN_DAYS").expect("Could not get COOKIE_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("COOKIE_EXPIRES_IN_DAYS from ENV should be a i64");
 
     let jwt = encode(&Header::default(), _user, &EncodingKey::from_secret(secret.as_ref()))?;
     Ok(jar.add(Cookie::build("auth", jwt)

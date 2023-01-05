@@ -1,3 +1,4 @@
+use std::env;
 use crate::db::Pool;
 use crate::user::UserDTO;
 use axum::async_trait;
@@ -6,6 +7,7 @@ use axum::http::request::Parts;
 use axum::response::Redirect;
 use axum::RequestPartsExt;
 use axum_extra::extract::CookieJar;
+use jsonwebtoken::{decode, DecodingKey, Validation};
 
 const REDIRECT_URL: &str = "/home";
 
@@ -26,6 +28,16 @@ where
             .await
             .expect("Could not get CookieJar from request parts");
         let _jwt = jar.get("auth").ok_or(Redirect::to(REDIRECT_URL))?.value();
+
+        let secret = env::var("JWT_SECRET").expect("Could not get JWT_SECRET from ENV");
+        // if let Ok(tokenData) = decode::<UserDTO>(&_jwt, &DecodingKey::from_secret(secret.as_ref()), &Validation::default()) {
+        //     return Ok(tokenData.claims)
+        // }
+
+        match decode::<UserDTO>(&_jwt, &DecodingKey::from_secret(secret.as_ref()), &Validation::default()) {
+            Ok(tokenData) => return Ok(tokenData.claims),
+            Err(e) => println!("{}", e.to_string())
+        }
 
         Err(Redirect::to(REDIRECT_URL))
     }

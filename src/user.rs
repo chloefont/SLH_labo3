@@ -1,7 +1,10 @@
+use std::env;
+use std::ops::Add;
 use crate::schema::*;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use axum_sessions::async_session::chrono::{Duration, Utc};
 use strum_macros::{Display, EnumString};
 
 #[derive(Display, EnumString, Serialize, Deserialize, PartialEq)]
@@ -22,6 +25,7 @@ pub struct User {
 pub struct UserDTO {
     pub email: String,
     pub auth_method: AuthenticationMethod,
+    pub exp: usize
 }
 
 impl User {
@@ -45,9 +49,13 @@ impl User {
     }
 
     pub fn to_dto(&self) -> UserDTO {
+        let expireds_in = env::var("JWT_EXPIRES_IN_DAYS").expect("Could not get JWT_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("JWT_EXPIRES_IN_DAYS from ENV should be a i64");
+        let exp_time = Utc::now().add(Duration::days(expireds_in)).timestamp();
+
         UserDTO {
             email: self.email.clone(),
             auth_method: self.get_auth_method(),
+            exp: exp_time as usize
         }
     }
 }
