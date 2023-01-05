@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use strum_macros::{Display, EnumString};
 
-#[derive(Display, EnumString, Serialize, Deserialize)]
+#[derive(Display, EnumString, Serialize, Deserialize, PartialEq)]
 pub enum AuthenticationMethod {
     Password,
     OAuth,

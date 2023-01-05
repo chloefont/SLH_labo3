@@ -51,23 +51,24 @@ async fn login(
     let _email = login.login_email;
     let _password = login.login_password;
 
-    const DEFAULT_HASH : &str = "$argon2id$v=19$m=4096,t=3,p=1$4umFzAYSVZkYYA7cPfe4Tg$uJnyCkJuG2s+QOyQfn43YYMWZMmFlJV2QUEULfO0UiA";
+    if let Ok(user) = get_user(&mut _conn, _email.as_str()){
+        if !user.email_verified || user.get_auth_method() != Password {
+            hash_default(_password.as_str());
+            return Err(AuthResult::WrongCreds.into_response());
+        }
 
-    if let Ok(user) = get_user(&mut _conn, _email.as_str()) {
-        let parsed_hash = PasswordHash::new(&user.password)?;
+        let parsed_hash = PasswordHash::new(&user.password).expect("Error when created PasswordHash object");
         Argon2::default().verify_password(_password.as_str().as_ref(), &parsed_hash).or(Err(AuthResult::WrongCreds.into_response()))?;
 
-        
+        // Once the user has been created, authenticate the user by adding a JWT cookie in the cookie jar
+        let jar = add_auth_cookie(jar, &user.to_dto())
+            .or(Err(StatusCode::INTERNAL_SERVER_ERROR.into_response()))?;
+
+        return Ok((jar, AuthResult::Success));
     } else {
-        let parsed_hash = PasswordHash::new(DEFAULT_HASH)?;
-        Argon2::default().verify_password(_password.as_str().as_ref(), &parsed_hash);
+        hash_default(_password.as_str());
         return Err(AuthResult::WrongCreds.into_response());
     }
-
-    // Once the user has been created, authenticate the user by adding a JWT cookie in the cookie jar
-    // let jar = add_auth_cookie(jar, &user_dto)
-    //     .or(Err(StatusCode::INTERNAL_SERVER_ERROR.into_response()))?;
-    return Ok((jar, AuthResult::Success));
 }
 
 /// Endpoint used to register a new account

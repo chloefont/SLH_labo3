@@ -1,4 +1,5 @@
 use std::env;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::http::Response;
 use dotenv::Error;
 use lettre::{Message, SmtpTransport, Transport};
@@ -32,4 +33,10 @@ pub fn send_mail(email : &String, subject : String, body : String) -> Result<(),
 
 
     mailer.send(&email).map(|_| ()).or(Err(String::from("Error when sending mail")))
+}
+
+pub fn hash_default(password : &str) {
+    const DEFAULT_HASH : &str = "$argon2id$v=19$m=4096,t=3,p=1$4umFzAYSVZkYYA7cPfe4Tg$uJnyCkJuG2s+QOyQfn43YYMWZMmFlJV2QUEULfO0UiA";
+    let parsed_hash = PasswordHash::new(DEFAULT_HASH).expect("Error when created PasswordHash object");
+    Argon2::default().verify_password(password.as_ref(), &parsed_hash);
 }
