@@ -1,5 +1,5 @@
 use std::env;
-use crate::db::{DbConn, save_user, user_exists, validate_email};
+use crate::db::{DbConn, get_user, save_user, user_exists, validate_email};
 use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
@@ -15,7 +15,7 @@ use axum_sessions::async_session::{MemoryStore, SessionStore, Session};
 use serde_json::json;
 use std::error::Error;
 use std::fmt::format;
-use argon2::{Argon2, PasswordHasher};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use lettre::{Message, SmtpTransport, Transport};
@@ -42,7 +42,7 @@ pub fn stage(state: AppState) -> Router {
 /// POST /login
 /// BODY { "login_email": "email", "login_password": "password" }
 async fn login(
-    _conn: DbConn,
+    mut _conn: DbConn,
     jar: CookieJar,
     Json(login): Json<LoginRequest>,
 ) -> Result<(CookieJar, AuthResult), Response> {
@@ -50,6 +50,19 @@ async fn login(
     //       the user exists and get the user info.
     let _email = login.login_email;
     let _password = login.login_password;
+
+    const DEFAULT_HASH : &str = "$argon2id$v=19$m=4096,t=3,p=1$4umFzAYSVZkYYA7cPfe4Tg$uJnyCkJuG2s+QOyQfn43YYMWZMmFlJV2QUEULfO0UiA";
+
+    if let Ok(user) = get_user(&mut _conn, _email.as_str()) {
+        let parsed_hash = PasswordHash::new(&user.password)?;
+        Argon2::default().verify_password(_password.as_str().as_ref(), &parsed_hash).or(Err(AuthResult::WrongCreds.into_response()))?;
+
+        
+    } else {
+        let parsed_hash = PasswordHash::new(DEFAULT_HASH)?;
+        Argon2::default().verify_password(_password.as_str().as_ref(), &parsed_hash);
+        return Err(AuthResult::WrongCreds.into_response());
+    }
 
     // Once the user has been created, authenticate the user by adding a JWT cookie in the cookie jar
     // let jar = add_auth_cookie(jar, &user_dto)
@@ -79,6 +92,7 @@ async fn register(
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(_password.as_ref(), &salt).expect("Error while hashing password").to_string();
+    println!("{}", password_hash);
 
     let user = User::new(_email.as_str(), password_hash.as_str(), Password, false);
 
