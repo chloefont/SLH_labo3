@@ -18,11 +18,13 @@ use std::fmt::format;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
+use jsonwebtoken::{encode, EncodingKey, Header};
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
 use serde::de::Unexpected::Str;
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
+use time::{Duration, OffsetDateTime};
 
 /// Declares the different endpoints
 /// state is used to pass common structs to the endpoints
@@ -140,8 +142,10 @@ async fn email_verification(
         return Err(AuthResult::Error.into_response());
     }
 
-    let email : String = session_option.unwrap().get("email").unwrap();
+    let session = session_option.unwrap();
+    let email : String = session.get("email").unwrap();
     validate_email(&mut _conn, email.as_str()).or(Err(AuthResult::Error.into_response()))?;
+    _session_store.destroy_session(session);
 
     println!("Email {} validated", email.as_str());
     Ok(AuthResult::Success)
@@ -212,8 +216,16 @@ async fn logout(jar: CookieJar) -> impl IntoResponse {
 fn add_auth_cookie(jar: CookieJar, _user: &UserDTO) -> Result<CookieJar, Box<dyn Error>> {
     // TODO: You have to create a new signed JWT and store it in the auth cookie.
     //       Careful with the cookie options.
-    let jwt = "JWT";
-    Ok(jar.add(Cookie::build("auth", jwt).finish()))
+    let secret = env::var("JWT_SECRET").expect("Could not get JWT_SECRET from ENV");
+    let expireds_in = env::var("JWT_EXPIRES_IN_DAYS").expect("Could not get JWT_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("JWT_EXPIRES_IN_DAYS from ENV should be a i64");
+
+    let jwt = encode(&Header::default(), _user, &EncodingKey::from_secret(secret.as_ref()))?;
+    Ok(jar.add(Cookie::build("auth", jwt)
+        .expires(OffsetDateTime::now_utc() + Duration::days(expireds_in))
+        .secure(true)
+        .http_only(true)
+        .finish())
+    )
 }
 
 enum AuthResult {
