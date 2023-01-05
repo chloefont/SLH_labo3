@@ -62,6 +62,16 @@ pub fn update_password(
 
 #[allow(dead_code)]
 /// Checks whether a user with that email exists in the DB. Returns Ok(()) if the user exists.
+pub fn validate_email(conn: &mut DbConn, email: &str) -> Result<(), Box<dyn Error>>{
+    diesel::update(users::table.filter(users::email.eq(email.to_string())))
+        .set(users::email_verified.eq(true))
+        .execute(&mut conn.0)
+        .and(Ok(()))
+        .or_else(|e| Err(e.into()))
+}
+
+#[allow(dead_code)]
+/// Checks whether a user with that email exists in the DB. Returns Ok(()) if the user exists.
 pub fn user_exists(conn: &mut DbConn, email: &str) -> Result<(), Box<dyn Error>> {
     get_user(conn, email).and(Ok(()))
 }

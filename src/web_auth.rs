@@ -1,5 +1,5 @@
 use std::env;
-use crate::db::{DbConn, save_user, user_exists};
+use crate::db::{DbConn, save_user, user_exists, validate_email};
 use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
@@ -125,8 +125,10 @@ async fn email_verification(
         return Err(AuthResult::Error.into_response());
     }
 
-    let session : String = session_option.unwrap().get("email").unwrap();
+    let email : String = session_option.unwrap().get("email").unwrap();
+    validate_email(&mut _conn, email.as_str()).or(Err(AuthResult::Error.into_response()))?;
 
+    println!("Email {} validated", email.as_str());
     Ok(AuthResult::Success)
 }
 
