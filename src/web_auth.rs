@@ -21,6 +21,7 @@ use argon2::password_hash::SaltString;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
+use oauth2::{CsrfToken, PkceCodeChallenge, Scope};
 use serde::de::Unexpected::Str;
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
@@ -162,13 +163,23 @@ async fn google_oauth(
     //       random challenge and a CSRF token. In order to get the email address of
     //       the user, use the following scope: https://www.googleapis.com/auth/userinfo.email
     //       Use Redirect::to(url) to redirect the user to Google's authentication form.
+    let client = &crate::oauth::OAUTH_CLIENT;
 
-    // let client = crate::oauth::OAUTH_CLIENT.todo();
+    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+
+    // Generate the full authorization URL.
+    let (auth_url, csrf_token) = client
+        .authorize_url(CsrfToken::new_random)
+        // Set the desired scopes.
+        .add_scope(Scope::new("email".to_string()))
+        // Set the PKCE code challenge.
+        .set_pkce_challenge(pkce_challenge)
+        .url();
 
     // If you need to store data between requests, you may use the session_store. You need to first
     // create a new Session and store the variables. Then, you add the session to the session_store
     // to get a session_id. You then store the session_id in a cookie.
-    Ok((jar, Redirect::to("myurl")))
+    Ok((jar, Redirect::to(auth_url.as_str())))
 }
 
 /// Endpoint called after a successful OAuth login.

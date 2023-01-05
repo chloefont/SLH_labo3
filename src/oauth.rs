@@ -1,3 +1,4 @@
+use std::env;
 use oauth2::basic::{BasicClient, BasicTokenResponse};
 use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenResponse, TokenUrl};
 use once_cell::sync::Lazy;
@@ -9,8 +10,11 @@ use serde::{Deserialize, Serialize};
 /// The initialization is done only once when the variable is used for the first time.  
 pub static OAUTH_CLIENT: Lazy<BasicClient> = Lazy::new(|| {
     // TODO: We currently hardcode the credentials, try to improve it.
-    let google_client_id = ClientId::new("GOOGLE_CLIENT_ID".to_string());
-    let google_client_secret = ClientSecret::new("GOOGLE_CLIENT_SECRET".to_string());
+    let client_id = env::var("GOOGLE_CLIENT_ID").expect("Could not get GOOGLE_CLIENT_ID from ENV");
+    let client_secret = env::var("GOOGLE_CLIENT_SECRET").expect("Could not get GOOGLE_CLIENT_SECRET from ENV");
+
+    let google_client_id = ClientId::new(client_id);
+    let google_client_secret = ClientSecret::new(client_secret);
 
     let auth_url = AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
         .expect("Invalid authorization endpoint URL");
