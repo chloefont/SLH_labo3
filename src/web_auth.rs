@@ -21,7 +21,8 @@ use argon2::password_hash::SaltString;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
-use oauth2::{CsrfToken, PkceCodeChallenge, Scope};
+use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, Scope};
+use oauth2::reqwest::http_client;
 use serde::de::Unexpected::Str;
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
@@ -176,6 +177,28 @@ async fn google_oauth(
         .set_pkce_challenge(pkce_challenge)
         .url();
 
+    let mut session = Session::new();
+    session.insert("csrf_token", csrf_token.clone()).or(Err(StatusCode::UNAUTHORIZED))?;
+    session.insert("pkce_verifier", pkce_verifier).or(Err(StatusCode::UNAUTHORIZED))?;
+
+    let session_id = _session_store.store_session(session).await.expect("Error when storing session").ok_or(Err(StatusCode::UNAUTHORIZED)).unwrap();
+
+    let expireds_in = env::var("COOKIE_EXPIRES_IN_DAYS").expect("Could not get COOKIE_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("COOKIE_EXPIRES_IN_DAYS from ENV should be a i64");
+
+    // Add csrf cookie
+    let jar = jar.add(Cookie::build("csrf_token", csrf_token)
+        .expires(OffsetDateTime::now_utc() + Duration::days(expireds_in))
+        .secure(true)
+        .http_only(true)
+        .finish());
+
+    // Add session id cookie
+    let jar = jar.add(Cookie::build("session_id", session_id)
+        .expires(OffsetDateTime::now_utc() + Duration::days(expireds_in))
+        .secure(true)
+        .http_only(true)
+        .finish());
+
     // If you need to store data between requests, you may use the session_store. You need to first
     // create a new Session and store the variables. Then, you add the session to the session_store
     // to get a session_id. You then store the session_id in a cookie.
@@ -195,6 +218,29 @@ async fn oauth_redirect(
     //       by interacting with Google's OAuth2 API (use an async request!). Once everything
     //       was verified, get the email address with the provided function (get_oauth_email)
     //       and create a JWT for the user.
+
+    let session_id_cookie = jar.get("session_id").ok_or(Err(StatusCode::BAD_REQUEST)).unwrap();
+    let csrf_token = jar.get("csrf_token").or_else(Err(StatusCode::BAD_REQUEST)).unwrap().value();
+
+    let session =
+        _session_store.load_session(session_id_cookie.value().to_string())
+        .await.or(Err(StatusCode::UNAUTHORIZED))
+        .unwrap().ok_or(Err(StatusCode::UNAUTHORIZED)).unwrap();
+
+    let stored_csrf_token : CsrfToken = session.get("csrf_token").or_else(Err(StatusCode::UNAUTHORIZED)).unwrap();
+    let pkce_verifier = session.get("pkce_verifier").or_else(Err(StatusCode::UNAUTHORIZED)).unwrap();
+
+    // verify the csrf tokens
+    if csrf_token.to_string() != (stored_csrf_token.secret()) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let token_result =
+        client
+            .exchange_code(AuthorizationCode::new("some authorization code".to_string()))
+            // Set the PKCE code verifier.
+            .set_pkce_verifier(pkce_verifier)
+            .request(http_client)?;
 
     // If you need to recover data between requests, you may use the session_store to load a session
     // based on a session_id.
