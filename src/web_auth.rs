@@ -3,7 +3,7 @@ use crate::db::{DbConn, get_user, save_user, user_exists, validate_email};
 use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
-use crate::user::{User, UserDTO};
+use crate::user::{AuthenticationMethod, User, UserDTO};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -15,6 +15,7 @@ use axum_sessions::async_session::{MemoryStore, SessionStore, Session};
 use serde_json::json;
 use std::error::Error;
 use std::fmt::format;
+use std::io::read_to_string;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
@@ -22,11 +23,12 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
 use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, Scope};
-use oauth2::reqwest::http_client;
+use oauth2::reqwest::{async_http_client, http_client};
 use serde::de::Unexpected::Str;
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
 use time::{Duration, OffsetDateTime};
+use crate::oauth::get_google_oauth_email;
 
 /// Declares the different endpoints
 /// state is used to pass common structs to the endpoints
@@ -181,12 +183,16 @@ async fn google_oauth(
     session.insert("csrf_token", csrf_token.clone()).or(Err(StatusCode::UNAUTHORIZED))?;
     session.insert("pkce_verifier", pkce_verifier).or(Err(StatusCode::UNAUTHORIZED))?;
 
-    let session_id = _session_store.store_session(session).await.expect("Error when storing session").ok_or(Err(StatusCode::UNAUTHORIZED)).unwrap();
+    //let session_id = _session_store.store_session(session).await.expect("Error when storing session").ok_or(Err::<>(StatusCode::UNAUTHORIZED)).unwrap();
+    let session_id =  _session_store.store_session(session).await
+        .or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let expireds_in = env::var("COOKIE_EXPIRES_IN_DAYS").expect("Could not get COOKIE_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("COOKIE_EXPIRES_IN_DAYS from ENV should be a i64");
 
     // Add csrf cookie
-    let jar = jar.add(Cookie::build("csrf_token", csrf_token)
+    let jar = jar.add(Cookie::build("csrf_token", csrf_token.secret().clone())
+        .path("/")
         .expires(OffsetDateTime::now_utc() + Duration::days(expireds_in))
         .secure(true)
         .http_only(true)
@@ -194,6 +200,7 @@ async fn google_oauth(
 
     // Add session id cookie
     let jar = jar.add(Cookie::build("session_id", session_id)
+        .path("/")
         .expires(OffsetDateTime::now_utc() + Duration::days(expireds_in))
         .secure(true)
         .http_only(true)
@@ -210,7 +217,7 @@ async fn google_oauth(
 async fn oauth_redirect(
     jar: CookieJar,
     State(_session_store): State<MemoryStore>,
-    _conn: DbConn,
+    mut _conn: DbConn,
     _params: Query<OAuthRedirect>,
 ) -> Result<(CookieJar, Redirect), StatusCode> {
     // TODO: The user should be redirected to this page automatically after a successful login.
@@ -219,28 +226,42 @@ async fn oauth_redirect(
     //       was verified, get the email address with the provided function (get_oauth_email)
     //       and create a JWT for the user.
 
-    let session_id_cookie = jar.get("session_id").ok_or(Err(StatusCode::BAD_REQUEST)).unwrap();
-    let csrf_token = jar.get("csrf_token").or_else(Err(StatusCode::BAD_REQUEST)).unwrap().value();
+    let session_id_cookie = jar.get("session_id").ok_or(StatusCode::BAD_REQUEST)?;
+    let csrf_token_cookie = jar.get("csrf_token").ok_or(StatusCode::BAD_REQUEST)?.clone();
 
     let session =
         _session_store.load_session(session_id_cookie.value().to_string())
-        .await.or(Err(StatusCode::UNAUTHORIZED))
-        .unwrap().ok_or(Err(StatusCode::UNAUTHORIZED)).unwrap();
+        .await.or(Err(StatusCode::UNAUTHORIZED))?.ok_or(StatusCode::UNAUTHORIZED).unwrap();
 
-    let stored_csrf_token : CsrfToken = session.get("csrf_token").or_else(Err(StatusCode::UNAUTHORIZED)).unwrap();
-    let pkce_verifier = session.get("pkce_verifier").or_else(Err(StatusCode::UNAUTHORIZED)).unwrap();
+    let stored_csrf_token : CsrfToken = session.get("csrf_token").ok_or(StatusCode::UNAUTHORIZED)?;
+    let pkce_verifier = session.get("pkce_verifier").ok_or(StatusCode::UNAUTHORIZED)?;
 
     // verify the csrf tokens
-    if csrf_token.to_string() != (stored_csrf_token.secret()) {
+    if csrf_token_cookie.value().to_string() != (stored_csrf_token.secret()).to_string() {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
     let token_result =
-        client
-            .exchange_code(AuthorizationCode::new("some authorization code".to_string()))
-            // Set the PKCE code verifier.
+        crate::oauth::OAUTH_CLIENT
+            .exchange_code(AuthorizationCode::new(_params.code.to_string()))
             .set_pkce_verifier(pkce_verifier)
-            .request(http_client)?;
+            .request_async(async_http_client).await.or(Err(StatusCode::INTERNAL_SERVER_ERROR))?;
+
+    let email = get_google_oauth_email(&token_result).await.or(Err(StatusCode::UNAUTHORIZED))?;
+
+    let jar = if let Ok(user) = get_user(&mut _conn, email.as_str()) {
+        if user.get_auth_method() != AuthenticationMethod::OAuth {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+
+        add_auth_cookie(jar, &user.to_dto()).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
+    } else {
+        let new_user = User::new(email.as_str(), "", AuthenticationMethod::OAuth, true);
+        let new_user_dto = &new_user.to_dto();
+        save_user(&mut _conn, new_user).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?;
+
+        add_auth_cookie(jar, new_user_dto).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
+    }.remove(csrf_token_cookie.clone());
 
     // If you need to recover data between requests, you may use the session_store to load a session
     // based on a session_id.
@@ -290,7 +311,8 @@ enum AuthResult {
     WrongCreds,
     IncorrectEmail,
     UserExists,
-    Error
+    Error,
+    InternalError,
 }
 
 /// Returns a status code and a JSON payload based on the value of the enum
@@ -301,7 +323,8 @@ impl IntoResponse for AuthResult {
             Self::WrongCreds => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
             Self::IncorrectEmail => (StatusCode::UNAUTHORIZED, "Incorrect email"),
             Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used"),
-            Self::Error => (StatusCode::UNAUTHORIZED, "Error")
+            Self::Error => (StatusCode::UNAUTHORIZED, "Error"),
+            Self::InternalError => (StatusCode::UNAUTHORIZED, "Internal error")
         };
         (status, Json(json!({ "res": message }))).into_response()
     }
