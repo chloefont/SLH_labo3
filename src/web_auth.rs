@@ -142,7 +142,7 @@ async fn email_verification(
     mut _conn: DbConn,
     State(_session_store): State<MemoryStore>,
     Path(session_id_encoded) : Path<String>
-) -> Result<AuthResult, Response> {
+) -> Result<Redirect, Response> {
     let session_id = url_escape::decode(session_id_encoded.as_str()).to_string();
     println!("Email verification {}", session_id);
 
@@ -158,7 +158,7 @@ async fn email_verification(
     _session_store.destroy_session(session);
 
     println!("Email {} validated", email.as_str());
-    Ok(AuthResult::Success)
+    Ok(Redirect::to("/login"))
 }
 
 /// Endpoint used for the first OAuth step
