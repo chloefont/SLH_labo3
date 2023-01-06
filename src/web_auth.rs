@@ -87,9 +87,15 @@ async fn register(
 ) -> Result<AuthResult, Response> {
     // TODO: Implement the register function. The email must be verified by sending a link.
     //       You can use the functions inside db.rs to add a new user to the DB.
+    const MIN_PASSWORD_LENGTH: i32 = 8;
+    const MAX_PASSWORD_LENGTH : i32 = 64;
 
     let _email = register.register_email;
     let _password = register.register_password;
+
+    if _password.len() < MIN_PASSWORD_LENGTH as usize || _password.len() > MAX_PASSWORD_LENGTH as usize {
+        return Err(AuthResult::WrongPasswordFormat.into_response());
+    }
 
     match user_exists(&mut _conn, _email.as_str()) {
         Ok(_) => return Err(AuthResult::UserExists.into_response()),
@@ -313,6 +319,7 @@ enum AuthResult {
     UserExists,
     Error,
     InternalError,
+    WrongPasswordFormat
 }
 
 /// Returns a status code and a JSON payload based on the value of the enum
@@ -323,8 +330,9 @@ impl IntoResponse for AuthResult {
             Self::WrongCreds => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
             Self::IncorrectEmail => (StatusCode::UNAUTHORIZED, "Incorrect email"),
             Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used"),
-            Self::Error => (StatusCode::UNAUTHORIZED, "Error"),
-            Self::InternalError => (StatusCode::UNAUTHORIZED, "Internal error")
+            Self::Error => (StatusCode::BAD_REQUEST, "Error"),
+            Self::InternalError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+            Self::WrongPasswordFormat => (StatusCode::UNAUTHORIZED, "The password must be between 8 and 64 characters")
         };
         (status, Json(json!({ "res": message }))).into_response()
     }
