@@ -28,6 +28,7 @@ use serde::de::Unexpected::Str;
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
 use time::{Duration, OffsetDateTime};
+use zxcvbn::zxcvbn;
 use crate::oauth::get_google_oauth_email;
 
 /// Declares the different endpoints
@@ -95,6 +96,12 @@ async fn register(
 
     if _password.len() < MIN_PASSWORD_LENGTH as usize || _password.len() > MAX_PASSWORD_LENGTH as usize {
         return Err(AuthResult::WrongPasswordFormat.into_response());
+    }
+
+    let password_strength = zxcvbn(_password.as_str(), &[_email.as_str()])
+        .or(Err(AuthResult::InternalError.into_response()))?;
+    if password_strength.score() < 3 {
+        return Err(AuthResult::PasswordNotStrongEnough.into_response());
     }
 
     match user_exists(&mut _conn, _email.as_str()) {
@@ -319,7 +326,8 @@ enum AuthResult {
     UserExists,
     Error,
     InternalError,
-    WrongPasswordFormat
+    WrongPasswordFormat,
+    PasswordNotStrongEnough
 }
 
 /// Returns a status code and a JSON payload based on the value of the enum
@@ -332,7 +340,8 @@ impl IntoResponse for AuthResult {
             Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used"),
             Self::Error => (StatusCode::BAD_REQUEST, "Error"),
             Self::InternalError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
-            Self::WrongPasswordFormat => (StatusCode::UNAUTHORIZED, "The password must be between 8 and 64 characters")
+            Self::WrongPasswordFormat => (StatusCode::UNAUTHORIZED, "The password must be between 8 and 64 characters"),
+            Self::PasswordNotStrongEnough => (StatusCode::UNAUTHORIZED, "The given password is not strong enough")
         };
         (status, Json(json!({ "res": message }))).into_response()
     }
