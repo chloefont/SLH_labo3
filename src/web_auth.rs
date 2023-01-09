@@ -55,7 +55,7 @@ async fn login(
 ) -> Result<(CookieJar, AuthResult), Response> {
     // TODO: Implement the login function. You can use the functions inside db.rs to check if
     //       the user exists and get the user info.
-    let _email = login.login_email;
+    let _email = login.login_email.to_lowercase();
     let _password = login.login_password;
 
     if let Ok(user) = get_user(&mut _conn, _email.as_str()){
@@ -91,7 +91,7 @@ async fn register(
     const MIN_PASSWORD_LENGTH: i32 = 8;
     const MAX_PASSWORD_LENGTH : i32 = 64;
 
-    let _email = register.register_email;
+    let _email = register.register_email.to_lowercase();
     let _password = register.register_password;
 
     if _password.len() < MIN_PASSWORD_LENGTH as usize || _password.len() > MAX_PASSWORD_LENGTH as usize {
