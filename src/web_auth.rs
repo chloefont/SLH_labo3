@@ -80,6 +80,10 @@ async fn register(
     let _email = register.register_email.to_lowercase();
     let _password = register.register_password;
 
+    if !email_address_valid(_email.as_str()) {
+        return Err(AuthResult::IncorrectEmail.into_response());
+    }
+
     if !password_strong_enough(_password.as_str(),&[_email.as_str()]) {
         return Err(AuthResult::WrongPasswordFormat.into_response());
     }

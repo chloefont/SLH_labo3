@@ -4,6 +4,7 @@ use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
+use regex::Regex;
 use zxcvbn::zxcvbn;
 
 pub fn send_mail(email : &String, subject : String, body : String) -> Result<(), String> {
@@ -59,4 +60,36 @@ pub fn hash_password(password : &str) -> String {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     argon2.hash_password(password.as_ref(), &salt).expect("Error while hashing password").to_string()
+}
+
+pub fn email_address_valid(email : &str) -> bool{
+    let email_regex: Regex = Regex::new(r"^([a-z0-9_+]([a-z0-9_+.]*[a-z0-9_+])?)@([a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,6})$").unwrap();
+    email_regex.is_match(email)
+}
+
+#[test]
+fn test_password_strong_enought() {
+    let valid_passwords = [
+        "Plfmo_mownf9876",
+        "lP.9876rw",
+        "c0mpl1c4t3d_p4ssw0rd",
+    ];
+
+    let invalid_passwords = [
+        "12345678",
+        "1234",
+        "ndgatvelvxkkuujnwhufmeoxhtecgdjkyuhoesdbvjebhftnvfyyppopzkxfvpplc",
+        "paul_1998",
+        "paulus1234"
+    ];
+
+    for password in valid_passwords.iter() {
+        println!("Testing valid password {}", password);
+        assert!(password_strong_enough(password, &[]));
+    }
+
+    for password in invalid_passwords.iter() {
+        println!("Testing invalid password {}", password);
+        assert!(!password_strong_enough(password, &[]));
+    }
 }
