@@ -1,9 +1,12 @@
 use std::env;
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::SaltString;
 use axum::http::Response;
 use dotenv::Error;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
+use zxcvbn::zxcvbn;
 
 pub fn send_mail(email : &String, subject : String, body : String) -> Result<(), String> {
     let splited_email = email.split('@').collect::<Vec<&str>>();
@@ -39,4 +42,23 @@ pub fn hash_default(password : &str) {
     const DEFAULT_HASH : &str = "$argon2id$v=19$m=4096,t=3,p=1$4umFzAYSVZkYYA7cPfe4Tg$uJnyCkJuG2s+QOyQfn43YYMWZMmFlJV2QUEULfO0UiA";
     let parsed_hash = PasswordHash::new(DEFAULT_HASH).expect("Error when created PasswordHash object");
     Argon2::default().verify_password(password.as_ref(), &parsed_hash);
+}
+
+pub fn password_strong_enough(password : &str, user_inputs : &[&str]) -> bool {
+    const MIN_PASSWORD_LENGTH: i32 = 8;
+    const MAX_PASSWORD_LENGTH : i32 = 64;
+    if password.chars().count() < MIN_PASSWORD_LENGTH as usize || password.chars().count() > MAX_PASSWORD_LENGTH as usize {
+        return false;
+    }
+
+   match zxcvbn(password, user_inputs) {
+         Ok(result) => result.score() >= 3,
+         Err(_) => false
+   }
+}
+
+pub fn hash_password(password : &str) -> String {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    argon2.hash_password(password.as_ref(), &salt).expect("Error while hashing password").to_string()
 }

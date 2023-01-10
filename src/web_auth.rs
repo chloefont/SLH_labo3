@@ -1,5 +1,5 @@
 use std::env;
-use crate::db::{DbConn, get_user, save_user, user_exists, validate_email};
+use crate::db::{DbConn, get_user, save_user, update_password, user_exists, validate_email};
 use crate::models::{
     AppState, LoginRequest, OAuthRedirect, PasswordUpdateRequest, RegisterRequest,
 };
@@ -88,20 +88,12 @@ async fn register(
 ) -> Result<AuthResult, Response> {
     // TODO: Implement the register function. The email must be verified by sending a link.
     //       You can use the functions inside db.rs to add a new user to the DB.
-    const MIN_PASSWORD_LENGTH: i32 = 8;
-    const MAX_PASSWORD_LENGTH : i32 = 64;
 
     let _email = register.register_email.to_lowercase();
     let _password = register.register_password;
 
-    if _password.len() < MIN_PASSWORD_LENGTH as usize || _password.len() > MAX_PASSWORD_LENGTH as usize {
+    if !password_strong_enough(_password.as_str(),&[_email.as_str()]) {
         return Err(AuthResult::WrongPasswordFormat.into_response());
-    }
-
-    let password_strength = zxcvbn(_password.as_str(), &[_email.as_str()])
-        .or(Err(AuthResult::InternalError.into_response()))?;
-    if password_strength.score() < 3 {
-        return Err(AuthResult::PasswordNotStrongEnough.into_response());
     }
 
     match user_exists(&mut _conn, _email.as_str()) {
@@ -109,10 +101,7 @@ async fn register(
         _ => ()
     }
 
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let password_hash = argon2.hash_password(_password.as_ref(), &salt).expect("Error while hashing password").to_string();
-    println!("{}", password_hash);
+    let password_hash = hash_password(_password.as_str());
 
     let user = User::new(_email.as_str(), password_hash.as_str(), Password, false);
 
@@ -288,11 +277,28 @@ async fn oauth_redirect(
 /// POST /password_update
 /// BODY { "old_password": "pass", "new_password": "pass" }
 async fn password_update(
-    _conn: DbConn,
+    mut _conn: DbConn,
     _user: UserDTO,
     Json(_update): Json<PasswordUpdateRequest>,
 ) -> Result<AuthResult, Response> {
     // TODO: Implement the password update function.
+    let user = get_user(&mut _conn, _user.email.as_str()).or(Err(AuthResult::Error.into_response()))?;
+
+    if user.get_auth_method() != Password {
+        return Err(AuthResult::Error.into_response());
+    }
+
+    // Verify old password
+    let parsed_hash = PasswordHash::new(&user.password).expect("Error when created PasswordHash object");
+    Argon2::default().verify_password(_update.old_password.as_str().as_ref(), &parsed_hash).or(Err(AuthResult::WrongCreds.into_response()))?;
+
+    if !password_strong_enough(_update.new_password.as_str(), &[user.email.as_str()]) {
+        return Err(AuthResult::WrongPasswordFormat.into_response());
+    }
+
+    let password_hash = hash_password(_update.new_password.as_str());
+    update_password(&mut _conn, user.email.as_str(), password_hash.as_str()).or(Err(AuthResult::InternalError.into_response()))?;
+
     Ok(AuthResult::Success)
 }
 
@@ -326,8 +332,7 @@ enum AuthResult {
     UserExists,
     Error,
     InternalError,
-    WrongPasswordFormat,
-    PasswordNotStrongEnough
+    WrongPasswordFormat
 }
 
 /// Returns a status code and a JSON payload based on the value of the enum
@@ -340,8 +345,7 @@ impl IntoResponse for AuthResult {
             Self::UserExists => (StatusCode::UNAUTHORIZED, "This email is already used"),
             Self::Error => (StatusCode::BAD_REQUEST, "Error"),
             Self::InternalError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
-            Self::WrongPasswordFormat => (StatusCode::UNAUTHORIZED, "The password must be between 8 and 64 characters"),
-            Self::PasswordNotStrongEnough => (StatusCode::UNAUTHORIZED, "The given password is not strong enough")
+            Self::WrongPasswordFormat => (StatusCode::UNAUTHORIZED, "The password must be between 8 and 64 characters and should be strong enough")
         };
         (status, Json(json!({ "res": message }))).into_response()
     }
