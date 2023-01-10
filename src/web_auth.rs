@@ -14,21 +14,13 @@ use axum_extra::extract::CookieJar;
 use axum_sessions::async_session::{MemoryStore, SessionStore, Session};
 use serde_json::json;
 use std::error::Error;
-use std::fmt::format;
-use std::io::read_to_string;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use jsonwebtoken::{encode, EncodingKey, Header};
-use lettre::{Message, SmtpTransport, Transport};
-use lettre::transport::smtp::authentication::Credentials;
 use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, Scope};
-use oauth2::reqwest::{async_http_client, http_client};
-use serde::de::Unexpected::Str;
+use oauth2::reqwest::{async_http_client};
 use crate::user::AuthenticationMethod::Password;
 use crate::utils::*;
 use time::{Duration, OffsetDateTime};
-use zxcvbn::zxcvbn;
 use crate::oauth::get_google_oauth_email;
 
 /// Declares the different endpoints
@@ -53,8 +45,6 @@ async fn login(
     jar: CookieJar,
     Json(login): Json<LoginRequest>,
 ) -> Result<(CookieJar, AuthResult), Response> {
-    // TODO: Implement the login function. You can use the functions inside db.rs to check if
-    //       the user exists and get the user info.
     let _email = login.login_email.to_lowercase();
     let _password = login.login_password;
 
@@ -86,8 +76,6 @@ async fn register(
     State(_session_store): State<MemoryStore>,
     Json(register): Json<RegisterRequest>,
 ) -> Result<AuthResult, Response> {
-    // TODO: Implement the register function. The email must be verified by sending a link.
-    //       You can use the functions inside db.rs to add a new user to the DB.
 
     let _email = register.register_email.to_lowercase();
     let _password = register.register_password;
@@ -123,15 +111,9 @@ async fn register(
 
     send_mail(&_email, "Email validation".to_string(), _body).or(Err(AuthResult::WrongCreds.into_response()))?;
 
-    // Once the user has been created, send a verification link by email
-    // If you need to store data between requests, you may use the session_store. You need to first
-    // create a new Session and store the variables. Then, you add the session to the session_store
-    // to get a session_id. You then store the session_id in a cookie.
-
     Ok(AuthResult::Success)
 }
 
-// TODO: Create the endpoint for the email verification function.
 /// Endpoint used to register a new account
 /// GET /email-verification/:token
 async fn email_verification(
@@ -163,11 +145,6 @@ async fn google_oauth(
     jar: CookieJar,
     State(_session_store): State<MemoryStore>,
 ) -> Result<(CookieJar, Redirect), StatusCode> {
-    // TODO: This function is used to authenticate a user with Google's OAuth2 service.
-    //       We want to use a PKCE authentication flow, you will have to generate a
-    //       random challenge and a CSRF token. In order to get the email address of
-    //       the user, use the following scope: https://www.googleapis.com/auth/userinfo.email
-    //       Use Redirect::to(url) to redirect the user to Google's authentication form.
     let client = &crate::oauth::OAUTH_CLIENT;
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -208,9 +185,6 @@ async fn google_oauth(
         .http_only(true)
         .finish());
 
-    // If you need to store data between requests, you may use the session_store. You need to first
-    // create a new Session and store the variables. Then, you add the session to the session_store
-    // to get a session_id. You then store the session_id in a cookie.
     Ok((jar, Redirect::to(auth_url.as_str())))
 }
 
@@ -222,11 +196,6 @@ async fn oauth_redirect(
     mut _conn: DbConn,
     _params: Query<OAuthRedirect>,
 ) -> Result<(CookieJar, Redirect), StatusCode> {
-    // TODO: The user should be redirected to this page automatically after a successful login.
-    //       You will need to verify the CSRF token and ensure the authorization code is valid
-    //       by interacting with Google's OAuth2 API (use an async request!). Once everything
-    //       was verified, get the email address with the provided function (get_oauth_email)
-    //       and create a JWT for the user.
 
     let session_id_cookie = jar.get("session_id").ok_or(StatusCode::BAD_REQUEST)?;
     let csrf_token_cookie = jar.get("csrf_token").ok_or(StatusCode::BAD_REQUEST)?.clone();
@@ -265,11 +234,6 @@ async fn oauth_redirect(
         add_auth_cookie(jar, new_user_dto).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
     }.remove(csrf_token_cookie.clone());
 
-    // If you need to recover data between requests, you may use the session_store to load a session
-    // based on a session_id.
-
-    // Once the OAuth user is authenticated, create the user in the DB and add a JWT cookie
-    // let jar = add_auth_cookie(jar, &user_dto).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?;
     Ok((jar, Redirect::to("/home")))
 }
 
@@ -281,7 +245,7 @@ async fn password_update(
     _user: UserDTO,
     Json(_update): Json<PasswordUpdateRequest>,
 ) -> Result<AuthResult, Response> {
-    // TODO: Implement the password update function.
+
     let user = get_user(&mut _conn, _user.email.as_str()).or(Err(AuthResult::Error.into_response()))?;
 
     if user.get_auth_method() != Password {
@@ -311,8 +275,6 @@ async fn logout(jar: CookieJar) -> impl IntoResponse {
 
 #[allow(dead_code)]
 fn add_auth_cookie(jar: CookieJar, _user: &UserDTO) -> Result<CookieJar, Box<dyn Error>> {
-    // TODO: You have to create a new signed JWT and store it in the auth cookie.
-    //       Careful with the cookie options.
     let secret = env::var("JWT_SECRET").expect("Could not get JWT_SECRET from ENV");
     let expireds_in = env::var("COOKIE_EXPIRES_IN_DAYS").expect("Could not get COOKIE_EXPIRES_IN_DAYS from ENV").parse::<i64>().expect("COOKIE_EXPIRES_IN_DAYS from ENV should be a i64");
 

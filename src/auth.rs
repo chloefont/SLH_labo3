@@ -21,8 +21,6 @@ where
     type Rejection = Redirect;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // TODO: You have to read the auth cookie and verify the JWT to ensure the user is
-        //       authenticated.
         let jar = parts
             .extract::<CookieJar>()
             .await
